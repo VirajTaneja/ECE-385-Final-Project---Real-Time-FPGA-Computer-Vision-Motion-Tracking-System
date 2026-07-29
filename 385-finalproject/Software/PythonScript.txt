@@ -1,0 +1,147 @@
+import cv2
+
+import numpy as np
+
+import socket
+
+import mediapipe as mp
+
+ 
+
+mp_hands = mp.solutions.hands
+
+mp_drawing = mp.solutions.drawing_utils
+
+ 
+
+UDP_IP = "0.0.0.0" 
+
+UDP_PORT = 5005
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+sock.bind((UDP_IP, UDP_PORT))
+
+ 
+
+pc_address = None
+
+while pc_address is None:
+
+    data, addr = sock.recvfrom(1024)
+
+    if data == b"hello":
+
+        pc_address = addr
+
+        print(f"PC found at: {pc_address}")
+
+ 
+
+SCREEN_WIDTH = 640
+
+SCREEN_HEIGHT = 480
+
+ 
+
+cap = cv2.VideoCapture(0)
+
+ball_x = SCREEN_WIDTH // 2
+
+ball_y = SCREEN_HEIGHT // 2
+
+alpha = 0.8 
+
+ 
+
+with mp_hands.Hands(
+
+    static_image_mode=False,
+
+    max_num_hands=1,
+
+    min_detection_confidence=0.7,
+
+    min_tracking_confidence=0.7
+
+) as hand_tracker:
+
+ 
+
+    print("Camera active")
+
+ 
+
+    while True:
+
+        ret, frame = cap.read()
+
+        if not ret:
+
+            break
+
+ 
+
+        frame = cv2.flip(frame, 1)
+
+        h, w, _ = frame.shape
+
+ 
+
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        results = hand_tracker.process(rgb)
+
+ 
+
+        if results.multi_hand_landmarks:
+
+ 
+
+            hand_landmarks = results.multi_hand_landmarks[0]
+
+           
+
+ 
+
+            fingertip = hand_landmarks.landmark[8]
+
+ 
+
+            target_x = int(fingertip.x * SCREEN_WIDTH)
+
+            target_y = int(fingertip.y * SCREEN_HEIGHT)
+
+ 
+
+            ball_x = int((1 - alpha) * ball_x + alpha * target_x)
+
+            ball_y = int((1 - alpha) * ball_y + alpha * target_y)
+
+ 
+
+            message = f"{ball_x},{ball_y}\n"
+
+            sock.sendto(message.encode('utf-8'), pc_address)
+
+ 
+
+            mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+
+            cv2.circle(frame, (int(fingertip.x * w), int(fingertip.y * h)), 10, (0, 255, 0), -1)
+
+ 
+
+        cv2.imshow("Hand Tracking (Mac)", frame)
+
+ 
+
+        if cv2.waitKey(1) & 0xFF == 27:
+
+            break
+
+ 
+
+cap.release()
+
+cv2.destroyAllWindows()
